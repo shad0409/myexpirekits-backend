@@ -63,6 +63,7 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:8081',
         'exp://192.168.100.13:8081', // Add your local IP for Expo
+        'myexpirekits.netlify.app',
         // Add your production frontend URLs here when ready
       ]
     : '*',
