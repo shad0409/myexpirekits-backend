@@ -58,18 +58,26 @@ const pool = mysql.createPool(poolConfig);
 
 // CORS configuration for Railway
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [
-        'http://localhost:3000',
-        'http://localhost:8081',
-        'exp://192.168.100.13:8081', // Add your local IP for Expo
-        'myexpirekits.netlify.app',
-        // Add your production frontend URLs here when ready
-      ]
-    : '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      console.log('✅ Allowed origins:', allowedOrigins);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Requested-With']
 }));
+
+app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
