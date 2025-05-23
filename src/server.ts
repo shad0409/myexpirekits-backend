@@ -56,6 +56,14 @@ const poolConfig = {
 
 const pool = mysql.createPool(poolConfig);
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:8081',
+  'exp://192.168.100.13:8081',
+  'https://myexpirekits.netlify.app',
+];
+
 // CORS configuration for Railway
 app.use(cors({
   origin: function (origin, callback) {
