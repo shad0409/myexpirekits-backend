@@ -72,17 +72,34 @@ app.use(cors({
     
     // Check if origin is in allowed list
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('✅ CORS allowed origin:', origin);
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
       console.log('✅ Allowed origins:', allowedOrigins);
-      callback(new Error('Not allowed by CORS'));
+      // For debugging - temporarily allow all Netlify origins
+      if (origin.includes('netlify.app')) {
+        console.log('🔧 Temporarily allowing Netlify origin for debugging');
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Length', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'X-Requested-With'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Requested-With'],
+  optionsSuccessStatus: 200, // For legacy browser support
+  preflightContinue: false
 }));
 
 app.options('*', cors());

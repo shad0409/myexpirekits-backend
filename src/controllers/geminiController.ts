@@ -3,7 +3,7 @@ import { RecipeGenerationService } from '../services/recipeGenerationService';
 import { ShoppingListGeminiService } from '../services/shoppingListGeminiService';
 
 /**
- * Generate recipes using Gemini API and store in database
+ * Generate recipes using Gemini API with images and store in database
  */
 export const generateRecipes = async (req: Request, res: Response) => {
   try {
@@ -16,19 +16,9 @@ export const generateRecipes = async (req: Request, res: Response) => {
     
     console.log(`Processing recipe request for user ${userId}, force new: ${forceNew}`);
     
-    // First check if we already have recipes for this user
-    if (!forceNew) {
-      const existingRecipes = await RecipeGenerationService.getLatestRecipes(userId);
-      if (existingRecipes) {
-        console.log('Found existing recipes, returning those');
-        return res.json(existingRecipes);
-      }
-    }
-    
-    // If we don't have recipes or need new ones, generate them
-    console.log(`Generating new recipes for user ${userId}`);
-    const recipes = await RecipeGenerationService.generateRecipeSuggestions(userId);
-    console.log(`Successfully generated ${recipes.recipes?.length || 0} recipes`);
+    // Use the new method that includes image fetching and intelligent caching
+    const recipes = await RecipeGenerationService.getOrGenerateRecipes(userId, forceNew);
+    console.log(`Successfully retrieved/generated ${recipes.recipes?.length || 0} recipes with images`);
     
     res.json(recipes);
   } catch (error) {
@@ -62,11 +52,46 @@ export const getLatestRecipes = async (req: Request, res: Response) => {
       });
     }
     
+    // Ensure all recipes have image URLs (backward compatibility)
+    if (recipes.recipes) {
+      recipes.recipes = recipes.recipes.map((recipe: any) => ({
+        ...recipe,
+        image_url: recipe.image_url || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=500&h=300&fit=crop'
+      }));
+    }
+    
     res.json(recipes);
   } catch (error) {
     console.error('Error fetching latest recipes:', error);
     res.status(500).json({ 
       message: 'Failed to fetch latest recipes',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Force generate completely new recipes (ignores cache)
+ */
+export const forceGenerateRecipes = async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.user_id as string;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    console.log(`Force generating new recipes for user ${userId}`);
+    
+    // Always generate new recipes with images
+    const recipes = await RecipeGenerationService.generateRecipeSuggestions(userId);
+    console.log(`Successfully generated ${recipes.recipes?.length || 0} new recipes with images`);
+    
+    res.json(recipes);
+  } catch (error) {
+    console.error('Error force generating recipes:', error);
+    res.status(500).json({ 
+      message: 'Failed to force generate recipes',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

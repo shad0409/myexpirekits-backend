@@ -1,4 +1,5 @@
 import { GeminiService } from './geminiService';
+import { ImageService } from './imageService';
 import { pool } from '../server';
 import { RowDataPacket } from 'mysql2';
 
@@ -35,6 +36,7 @@ interface RecipeItem {
   suitableFor: string[];
   tags: string[];
   expiringItemsUsed: string[];
+  image_url?: string; // Added image URL field
 }
 
 export class RecipeGenerationService {
@@ -133,6 +135,7 @@ export class RecipeGenerationService {
       `;
       
       // Generate recipes using Gemini
+      console.log('Generating recipes with Gemini LLM...');
       const response = await GeminiService.generateWithContext(prompt, context);
       
       try {
@@ -141,8 +144,50 @@ export class RecipeGenerationService {
         
         // Parse the JSON
         const recipeResult = JSON.parse(jsonStr);
+        
+        // Add images to each recipe
+        console.log('Fetching images for generated recipes...');
+        const recipesWithImages = await Promise.all(
+          recipeResult.recipes.map(async (recipe: any, index: number) => {
+            try {
+              console.log(`Fetching image for recipe ${index + 1}: ${recipe.name}`);
+              
+              // Try to get an image for this recipe by name
+              let imageUrl = await ImageService.getRecipeImage(recipe.name);
+              
+              // Fallback: try ingredient-based search
+              if (!imageUrl && recipe.ingredients && recipe.ingredients.length > 0) {
+                console.log(`Recipe name search failed, trying ingredients for: ${recipe.name}`);
+                imageUrl = await ImageService.getIngredientBasedImage(recipe.ingredients);
+              }
+              
+              // Ultimate fallback: generic food image
+              if (!imageUrl) {
+                console.log(`All searches failed, using generic image for: ${recipe.name}`);
+                imageUrl = await ImageService.getGenericFoodImage();
+              }
+              
+              console.log(`Image assigned for "${recipe.name}": ${imageUrl}`);
+              
+              return {
+                ...recipe,
+                image_url: imageUrl
+              };
+            } catch (error) {
+              console.error(`Error fetching image for recipe "${recipe.name}":`, error);
+              // Return recipe with fallback image
+              return {
+                ...recipe,
+                image_url: await ImageService.getGenericFoodImage()
+              };
+            }
+          })
+        );
+        
+        console.log(`Successfully generated ${recipesWithImages.length} recipes with images`);
+        
         const recipes = {
-          ...recipeResult,
+          recipes: recipesWithImages,
           generated: new Date()
         };
         
@@ -234,6 +279,14 @@ export class RecipeGenerationService {
           recipeData.generated = new Date(recipeData.generated);
         }
         
+        // Ensure all recipes have image URLs (fallback for old recipes without images)
+        if (recipeData.recipes) {
+          recipeData.recipes = recipeData.recipes.map((recipe: any) => ({
+            ...recipe,
+            image_url: recipe.image_url || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=500&h=300&fit=crop'
+          }));
+        }
+        
         return recipeData;
       } catch (error) {
         console.error('Error parsing recipe data from database:', error);
@@ -243,6 +296,60 @@ export class RecipeGenerationService {
     } catch (error) {
       console.error('Error fetching recipes from database:', error);
       return null;
+    }
+  }
+  
+  /**
+   * Check if user has recent recipes (within last 24 hours) to avoid unnecessary API calls
+   */
+  static async hasRecentRecipes(userId: string): Promise<boolean> {
+    try {
+      const [rows]: any = await pool.execute(
+        `SELECT created_at FROM gemini_recipes 
+         WHERE user_id = ? AND is_active = TRUE 
+         AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+         ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      );
+      
+      return rows.length > 0;
+    } catch (error) {
+      console.error('Error checking for recent recipes:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Get or generate recipes for a user (with caching logic)
+   */
+  static async getOrGenerateRecipes(userId: string, forceGenerate: boolean = false): Promise<RecipeResult> {
+    try {
+      // Check if we should use cached recipes
+      if (!forceGenerate) {
+        const hasRecent = await this.hasRecentRecipes(userId);
+        if (hasRecent) {
+          console.log('Using recent cached recipes for user:', userId);
+          const cachedRecipes = await this.getLatestRecipes(userId);
+          if (cachedRecipes) {
+            return cachedRecipes;
+          }
+        }
+      }
+      
+      // Generate new recipes
+      console.log('Generating new recipes for user:', userId);
+      return await this.generateRecipeSuggestions(userId);
+    } catch (error) {
+      console.error('Error getting or generating recipes:', error);
+      
+      // Fallback: try to get any existing recipes
+      const existingRecipes = await this.getLatestRecipes(userId);
+      if (existingRecipes) {
+        console.log('Using existing recipes as fallback');
+        return existingRecipes;
+      }
+      
+      throw error;
     }
   }
 }

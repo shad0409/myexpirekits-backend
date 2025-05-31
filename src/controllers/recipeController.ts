@@ -45,10 +45,13 @@ export const getRecipeById = async (req: Request, res: Response) => {
 export const getRecipeRecommendations = async (req: Request, res: Response) => {
   try {
     const userId = req.query.user_id as string;
+    const forceGenerate = req.query.force === 'true'; // Allow forcing new generation
     
     if (!userId) {
       return res.status(400).json({ message: 'User ID is required' });
     }
+    
+    console.log(`Getting recipe recommendations for user: ${userId}, force: ${forceGenerate}`);
     
     const recommendations = await RecipeRecommendationService.findMatchingRecipes(userId);
     res.json(recommendations);
