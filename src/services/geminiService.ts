@@ -33,7 +33,7 @@ export class GeminiService {
     try {
       // Get the text-only model (updated to use the correct model name)
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-preview-05-20",
+        model: "gemini-1.5-pro",
         safetySettings,
       });
       
@@ -55,7 +55,7 @@ export class GeminiService {
   ): Promise<string> {
     try {
       const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-preview-05-20",
+        model: "gemini-1.5-pro",
         safetySettings,
       });
       
