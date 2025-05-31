@@ -147,24 +147,39 @@ export class RecipeGenerationService {
         
         // Add images to each recipe
         console.log('Fetching images for generated recipes...');
+        const usedImages = new Set<string>();
+        
         const recipesWithImages = await Promise.all(
           recipeResult.recipes.map(async (recipe: any, index: number) => {
             try {
               console.log(`Fetching image for recipe ${index + 1}: ${recipe.name}`);
               
-              // Try to get an image for this recipe by name
-              let imageUrl = await ImageService.getRecipeImage(recipe.name);
+              let imageUrl: string | null = null;
+              let attemptCount = 0;
+              const maxAttempts = 3;
               
-              // Fallback: try ingredient-based search
-              if (!imageUrl && recipe.ingredients && recipe.ingredients.length > 0) {
-                console.log(`Recipe name search failed, trying ingredients for: ${recipe.name}`);
-                imageUrl = await ImageService.getIngredientBasedImage(recipe.ingredients);
+              // Strategy 1: Try recipe name with multiple attempts for variation
+              while (!imageUrl && attemptCount < maxAttempts) {
+                imageUrl = await ImageService.getRecipeImage(recipe.name, usedImages, attemptCount);
+                if (imageUrl) break;
+                attemptCount++;
               }
               
-              // Ultimate fallback: generic food image
+              // Strategy 2: Try ingredient-based search with variation
+              if (!imageUrl && recipe.ingredients && recipe.ingredients.length > 0) {
+                console.log(`Recipe name search failed, trying ingredients for: ${recipe.name}`);
+                attemptCount = 0;
+                while (!imageUrl && attemptCount < maxAttempts) {
+                  imageUrl = await ImageService.getIngredientBasedImage(recipe.ingredients, usedImages, attemptCount);
+                  if (imageUrl) break;
+                  attemptCount++;
+                }
+              }
+              
+              // Strategy 3: Get a diverse food image based on recipe index
               if (!imageUrl) {
-                console.log(`All searches failed, using generic image for: ${recipe.name}`);
-                imageUrl = await ImageService.getGenericFoodImage();
+                console.log(`All specific searches failed, using diverse image for: ${recipe.name}`);
+                imageUrl = await ImageService.getDiverseFoodImage(index, usedImages);
               }
               
               console.log(`Image assigned for "${recipe.name}": ${imageUrl}`);
@@ -175,10 +190,10 @@ export class RecipeGenerationService {
               };
             } catch (error) {
               console.error(`Error fetching image for recipe "${recipe.name}":`, error);
-              // Return recipe with fallback image
+              // Return recipe with diverse fallback image
               return {
                 ...recipe,
-                image_url: await ImageService.getGenericFoodImage()
+                image_url: await ImageService.getDiverseFoodImage(index, usedImages)
               };
             }
           })
