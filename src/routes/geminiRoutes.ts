@@ -6,7 +6,8 @@ import {
   regenerateRecipeImage,
   generateEnhancedShoppingList,
   getLatestShoppingList,
-  checkRecentRecipes
+  checkRecentRecipes,
+  testImageOnly
 } from '../controllers/geminiController';
 
 const router = Router();
@@ -30,6 +31,10 @@ router.post('/recipes/regenerate-image', async (req: Request, res: Response) => 
 
 router.get('/recipes/check-recent', async (req: Request, res: Response) => {
   await checkRecentRecipes(req, res);
+});
+
+router.get('/test-image', async (req: Request, res: Response) => {
+  await testImageOnly(req, res);
 });
 
 // Shopping list endpoints

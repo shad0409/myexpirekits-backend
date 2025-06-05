@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { RecipeGenerationService } from '../services/recipeGenerationService';
 import { ShoppingListGeminiService } from '../services/shoppingListGeminiService';
+import { GeminiService } from '../services/geminiService';
 
 /**
  * Generate recipes using Gemini API with AI-generated images and store in database
@@ -311,6 +312,31 @@ export const checkRecentRecipes = async (req: Request, res: Response) => {
     res.status(500).json({ 
       message: 'Failed to check recent recipes',
       error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+export const testImageOnly = async (req: Request, res: Response) => {
+  try {
+    console.log('Testing image generation...');
+    
+    const imageUrl = await GeminiService.generateImage(
+      "A delicious plate of spaghetti with tomato sauce and basil, professional food photography"
+    );
+    
+    res.json({
+      success: true,
+      imageUrl,
+      message: 'Image generated successfully',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Image test failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     });
   }
 };
