@@ -86,7 +86,20 @@ export class GeminiService {
         safetySettings,
       });
       
-      const result = await model.generateContent(prompt);
+      // The model requires TEXT + IMAGE response modalities, so structure the request properly
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `Generate an image: ${prompt}`
+              }
+            ]
+          }
+        ]
+      });
+      
       const response = result.response;
       
       console.log('Gemini response received, processing...');
