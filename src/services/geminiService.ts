@@ -93,7 +93,7 @@ export class GeminiService {
             role: "user",
             parts: [
               {
-                text: `Generate an image: ${prompt}`
+                text: `Generate an image with this prompt: ${prompt}`
               }
             ]
           }
