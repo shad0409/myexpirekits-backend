@@ -1,5 +1,4 @@
 import { GeminiService } from './geminiService';
-import { ImageService } from './imageService';
 import { pool } from '../server';
 import { RowDataPacket } from 'mysql2';
 
@@ -36,7 +35,7 @@ interface RecipeItem {
   suitableFor: string[];
   tags: string[];
   expiringItemsUsed: string[];
-  image_url?: string; // Added image URL field
+  image_url?: string; // Keep the same field name as original
 }
 
 export class RecipeGenerationService {
@@ -145,41 +144,62 @@ export class RecipeGenerationService {
         // Parse the JSON
         const recipeResult = JSON.parse(jsonStr);
         
-        // Add images to each recipe
-        console.log('Fetching images for generated recipes...');
-        const usedImages = new Set<string>();
+        // Add images to each recipe using Gemini image generation
+        console.log('Generating images for recipes using Gemini...');
         
         const recipesWithImages = await Promise.all(
           recipeResult.recipes.map(async (recipe: any, index: number) => {
             try {
-              console.log(`Fetching image for recipe ${index + 1}: ${recipe.name}`);
+              console.log(`Generating image for recipe ${index + 1}: ${recipe.name}`);
               
               let imageUrl: string | null = null;
               let attemptCount = 0;
               const maxAttempts = 3;
               
-              // Strategy 1: Try recipe name with multiple attempts for variation
+              // Strategy 1: Try generating image with recipe name and description
               while (!imageUrl && attemptCount < maxAttempts) {
-                imageUrl = await ImageService.getRecipeImage(recipe.name, usedImages, attemptCount);
-                if (imageUrl) break;
+                try {
+                  imageUrl = await this.generateRecipeImageWithVariation(
+                    recipe.name, 
+                    recipe.description, 
+                    recipe.ingredients, 
+                    attemptCount
+                  );
+                  if (imageUrl) break;
+                } catch (error) {
+                  console.error(`Attempt ${attemptCount + 1} failed for recipe "${recipe.name}":`, error);
+                }
                 attemptCount++;
               }
               
-              // Strategy 2: Try ingredient-based search with variation
+              // Strategy 2: Try ingredient-based image generation with variation
               if (!imageUrl && recipe.ingredients && recipe.ingredients.length > 0) {
-                console.log(`Recipe name search failed, trying ingredients for: ${recipe.name}`);
+                console.log(`Recipe name generation failed, trying ingredients for: ${recipe.name}`);
                 attemptCount = 0;
                 while (!imageUrl && attemptCount < maxAttempts) {
-                  imageUrl = await ImageService.getIngredientBasedImage(recipe.ingredients, usedImages, attemptCount);
-                  if (imageUrl) break;
+                  try {
+                    imageUrl = await this.generateIngredientBasedImageWithVariation(
+                      recipe.ingredients, 
+                      attemptCount
+                    );
+                    if (imageUrl) break;
+                  } catch (error) {
+                    console.error(`Ingredient-based attempt ${attemptCount + 1} failed:`, error);
+                  }
                   attemptCount++;
                 }
               }
               
-              // Strategy 3: Get a diverse food image based on recipe index
+              // Strategy 3: Generate a diverse food image based on recipe category/tags
               if (!imageUrl) {
-                console.log(`All specific searches failed, using diverse image for: ${recipe.name}`);
-                imageUrl = await ImageService.getDiverseFoodImage(index, usedImages);
+                console.log(`All specific generation failed, using diverse food image for: ${recipe.name}`);
+                try {
+                  imageUrl = await this.generateDiverseFoodImage(recipe, index);
+                } catch (error) {
+                  console.error('Diverse food image generation failed:', error);
+                  // Use fallback URL
+                  imageUrl = this.getFallbackImageUrl(index);
+                }
               }
               
               console.log(`Image assigned for "${recipe.name}": ${imageUrl}`);
@@ -189,11 +209,11 @@ export class RecipeGenerationService {
                 image_url: imageUrl
               };
             } catch (error) {
-              console.error(`Error fetching image for recipe "${recipe.name}":`, error);
-              // Return recipe with diverse fallback image
+              console.error(`Error generating image for recipe "${recipe.name}":`, error);
+              // Return recipe with fallback image
               return {
                 ...recipe,
-                image_url: await ImageService.getDiverseFoodImage(index, usedImages)
+                image_url: this.getFallbackImageUrl(index)
               };
             }
           })
@@ -219,6 +239,135 @@ export class RecipeGenerationService {
       console.error('Error generating recipe suggestions:', error);
       throw error;
     }
+  }
+
+  /**
+   * Generate recipe image with variations based on attempt number
+   */
+  private static async generateRecipeImageWithVariation(
+    recipeName: string, 
+    description: string, 
+    ingredients: string[], 
+    attemptNumber: number
+  ): Promise<string> {
+    const variations = [
+      {
+        style: "professional food photography",
+        angle: "top-down view",
+        lighting: "natural lighting"
+      },
+      {
+        style: "restaurant-quality presentation", 
+        angle: "45-degree angle",
+        lighting: "warm lighting"
+      },
+      {
+        style: "home cooking style",
+        angle: "side view",
+        lighting: "bright natural light"
+      }
+    ];
+
+    const variation = variations[attemptNumber] || variations[0];
+    
+    const prompt = `Create a high-quality, appetizing food image of "${recipeName}". 
+    
+    Description: ${description}
+    
+    Key ingredients visible: ${ingredients.slice(0, 5).join(', ')}
+    
+    Style: ${variation.style}
+    Camera angle: ${variation.angle}
+    Lighting: ${variation.lighting}
+    
+    Requirements:
+    - Clean, appetizing presentation
+    - Vibrant colors and sharp focus
+    - Clean white or wooden background
+    - No text or watermarks
+    - Make it look delicious and Instagram-worthy
+    - Show the finished dish ready to eat`;
+
+    return await GeminiService.generateRecipeImage(recipeName, description, ingredients);
+  }
+
+  /**
+   * Generate ingredient-based image with variations
+   */
+  private static async generateIngredientBasedImageWithVariation(
+    ingredients: string[], 
+    attemptNumber: number
+  ): Promise<string> {
+    const styles = [
+      "colorful ingredient arrangement",
+      "rustic cooking ingredients display", 
+      "fresh market-style ingredient layout"
+    ];
+
+    const style = styles[attemptNumber] || styles[0];
+    const mainIngredients = ingredients.slice(0, 3).join(', ');
+    
+    const prompt = `Create a beautiful ${style} featuring ${mainIngredients}. 
+    
+    Style requirements:
+    - High-quality food photography
+    - Clean, organized presentation
+    - Natural lighting
+    - Fresh and appetizing appearance
+    - Clean background
+    - No text or labels
+    - Focus on the natural colors and textures of the ingredients`;
+
+    return await GeminiService.generateImage(prompt);
+  }
+
+  /**
+   * Generate diverse food image based on recipe characteristics
+   */
+  private static async generateDiverseFoodImage(recipe: any, index: number): Promise<string> {
+    const cuisineStyles = [
+      "Malaysian",
+      "Asian fusion", 
+      "Mediterranean",
+      "Modern international",
+      "Home-style comfort food"
+    ];
+
+    const cuisineStyle = cuisineStyles[index % cuisineStyles.length];
+    const difficulty = recipe.difficulty || "Medium";
+    const tags = recipe.tags ? recipe.tags.join(', ') : "delicious, homemade";
+    
+    const prompt = `Create an appetizing ${cuisineStyle} dish that looks ${difficulty.toLowerCase()} to prepare. 
+    
+    Style: ${tags}
+    
+    Requirements:
+    - Professional food photography
+    - Restaurant-quality plating
+    - Vibrant, appetizing colors
+    - Clean presentation
+    - Natural lighting
+    - Shallow depth of field
+    - Clean background
+    - No text or watermarks
+    - Make it look delicious and inviting`;
+
+    return await GeminiService.generateImage(prompt);
+  }
+
+  /**
+   * Get fallback image URL when all generation attempts fail
+   */
+  private static getFallbackImageUrl(index: number): string {
+    const fallbackImages = [
+      'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=500&h=300&fit=crop',
+      'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=500&h=300&fit=crop',
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&h=300&fit=crop',
+      'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=500&h=300&fit=crop',
+      'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=500&h=300&fit=crop'
+    ];
+    
+    return fallbackImages[index % fallbackImages.length];
   }
   
   /**
@@ -296,9 +445,9 @@ export class RecipeGenerationService {
         
         // Ensure all recipes have image URLs (fallback for old recipes without images)
         if (recipeData.recipes) {
-          recipeData.recipes = recipeData.recipes.map((recipe: any) => ({
+          recipeData.recipes = recipeData.recipes.map((recipe: any, index: number) => ({
             ...recipe,
-            image_url: recipe.image_url || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=500&h=300&fit=crop'
+            image_url: recipe.image_url || this.getFallbackImageUrl(index)
           }));
         }
         
@@ -364,6 +513,19 @@ export class RecipeGenerationService {
         return existingRecipes;
       }
       
+      throw error;
+    }
+  }
+
+  /**
+   * Regenerate image for a specific recipe (useful for re-generating failed images)
+   */
+  static async regenerateRecipeImage(recipeName: string, description: string, ingredients: string[]): Promise<string> {
+    try {
+      console.log(`Regenerating image for recipe: ${recipeName}`);
+      return await GeminiService.generateRecipeImage(recipeName, description, ingredients);
+    } catch (error) {
+      console.error('Error regenerating recipe image:', error);
       throw error;
     }
   }

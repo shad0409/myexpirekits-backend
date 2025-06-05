@@ -3,7 +3,7 @@ import { RecipeGenerationService } from '../services/recipeGenerationService';
 import { ShoppingListGeminiService } from '../services/shoppingListGeminiService';
 
 /**
- * Generate recipes using Gemini API with images and store in database
+ * Generate recipes using Gemini API with AI-generated images and store in database
  */
 export const generateRecipes = async (req: Request, res: Response) => {
   try {
@@ -16,11 +16,39 @@ export const generateRecipes = async (req: Request, res: Response) => {
     
     console.log(`Processing recipe request for user ${userId}, force new: ${forceNew}`);
     
-    // Use the new method that includes image fetching and intelligent caching
-    const recipes = await RecipeGenerationService.getOrGenerateRecipes(userId, forceNew);
-    console.log(`Successfully retrieved/generated ${recipes.recipes?.length || 0} recipes with images`);
+    const startTime = Date.now();
     
-    res.json(recipes);
+    // Use the updated method that includes Gemini image generation and intelligent caching
+    const recipes = await RecipeGenerationService.getOrGenerateRecipes(userId, forceNew);
+    
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
+    
+    console.log(`Successfully retrieved/generated ${recipes.recipes?.length || 0} recipes with AI images in ${generationTime}ms`);
+    
+    // Count recipes with successfully generated images vs fallback images
+    const recipesWithAIImages = recipes.recipes?.filter(r => 
+      r.image_url && !r.image_url.includes('unsplash.com')
+    ).length || 0;
+    
+    const recipesWithFallbackImages = recipes.recipes?.filter(r => 
+      r.image_url && r.image_url.includes('unsplash.com')
+    ).length || 0;
+    
+    // Add metadata about image generation
+    const response = {
+      ...recipes,
+      metadata: {
+        generationTime,
+        totalRecipes: recipes.recipes?.length || 0,
+        aiGeneratedImages: recipesWithAIImages,
+        fallbackImages: recipesWithFallbackImages,
+        wasFromCache: !forceNew && await RecipeGenerationService.hasRecentRecipes(userId),
+        generatedAt: recipes.generated
+      }
+    };
+    
+    res.json(response);
   } catch (error) {
     console.error('Error generating recipes:', error);
     res.status(500).json({ 
@@ -52,15 +80,17 @@ export const getLatestRecipes = async (req: Request, res: Response) => {
       });
     }
     
-    // Ensure all recipes have image URLs (backward compatibility)
-    if (recipes.recipes) {
-      recipes.recipes = recipes.recipes.map((recipe: any) => ({
-        ...recipe,
-        image_url: recipe.image_url || 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=500&h=300&fit=crop'
-      }));
-    }
+    // Add metadata for consistency
+    const response = {
+      ...recipes,
+      metadata: {
+        totalRecipes: recipes.recipes?.length || 0,
+        fromCache: true,
+        generatedAt: recipes.generated
+      }
+    };
     
-    res.json(recipes);
+    res.json(response);
   } catch (error) {
     console.error('Error fetching latest recipes:', error);
     res.status(500).json({ 
@@ -71,7 +101,7 @@ export const getLatestRecipes = async (req: Request, res: Response) => {
 };
 
 /**
- * Force generate completely new recipes (ignores cache)
+ * Force generate completely new recipes with AI images (ignores cache)
  */
 export const forceGenerateRecipes = async (req: Request, res: Response) => {
   try {
@@ -83,15 +113,89 @@ export const forceGenerateRecipes = async (req: Request, res: Response) => {
     
     console.log(`Force generating new recipes for user ${userId}`);
     
-    // Always generate new recipes with images
-    const recipes = await RecipeGenerationService.generateRecipeSuggestions(userId);
-    console.log(`Successfully generated ${recipes.recipes?.length || 0} new recipes with images`);
+    const startTime = Date.now();
     
-    res.json(recipes);
+    // Always generate new recipes with AI images
+    const recipes = await RecipeGenerationService.generateRecipeSuggestions(userId);
+    
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
+    
+    console.log(`Successfully generated ${recipes.recipes?.length || 0} new recipes with AI images in ${generationTime}ms`);
+    
+    // Count image generation success
+    const recipesWithAIImages = recipes.recipes?.filter(r => 
+      r.image_url && !r.image_url.includes('unsplash.com')
+    ).length || 0;
+    
+    const recipesWithFallbackImages = recipes.recipes?.filter(r => 
+      r.image_url && r.image_url.includes('unsplash.com')
+    ).length || 0;
+    
+    // Add generation metadata
+    const response = {
+      ...recipes,
+      metadata: {
+        generationTime,
+        totalRecipes: recipes.recipes?.length || 0,
+        aiGeneratedImages: recipesWithAIImages,
+        fallbackImages: recipesWithFallbackImages,
+        forceGenerated: true,
+        generatedAt: recipes.generated
+      }
+    };
+    
+    res.json(response);
   } catch (error) {
     console.error('Error force generating recipes:', error);
     res.status(500).json({ 
       message: 'Failed to force generate recipes',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Regenerate AI image for a specific recipe
+ */
+export const regenerateRecipeImage = async (req: Request, res: Response) => {
+  try {
+    const { recipeName, description, ingredients } = req.body;
+    
+    if (!recipeName || !description || !ingredients) {
+      return res.status(400).json({ 
+        message: 'Recipe name, description, and ingredients are required' 
+      });
+    }
+    
+    console.log(`Regenerating AI image for recipe: ${recipeName}`);
+    
+    const startTime = Date.now();
+    
+    const imageUrl = await RecipeGenerationService.regenerateRecipeImage(
+      recipeName, 
+      description, 
+      ingredients
+    );
+    
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
+    
+    console.log(`AI image regenerated successfully for "${recipeName}" in ${generationTime}ms`);
+    
+    res.json({
+      success: true,
+      imageUrl,
+      recipeName,
+      generationTime,
+      isAIGenerated: !imageUrl.includes('unsplash.com'),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error regenerating recipe image:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to regenerate recipe image',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -111,20 +215,36 @@ export const generateEnhancedShoppingList = async (req: Request, res: Response) 
     
     console.log(`Processing shopping list request for user ${userId}, force new: ${forceNew}`);
     
+    const startTime = Date.now();
     let shoppingList;
     
     if (forceNew) {
       // Force generate a new shopping list
       console.log(`Generating new shopping list for user ${userId}`);
-      shoppingList = await ShoppingListGeminiService.generateNewShoppingList(userId);
+      shoppingList = await ShoppingListGeminiService.generateNewShoppingList?.(userId) || 
+                     await ShoppingListGeminiService.generateEnhancedShoppingList(userId);
     } else {
       // Get existing shopping list or generate new one if none exists
       shoppingList = await ShoppingListGeminiService.generateEnhancedShoppingList(userId);
     }
     
-    console.log(`Successfully processed shopping list with ${shoppingList.items?.length || 0} items`);
+    const endTime = Date.now();
+    const generationTime = endTime - startTime;
     
-    res.json(shoppingList);
+    console.log(`Successfully processed shopping list with ${shoppingList.items?.length || 0} items in ${generationTime}ms`);
+    
+    // Add metadata
+    const response = {
+      ...shoppingList,
+      metadata: {
+        generationTime,
+        totalItems: shoppingList.items?.length || 0,
+        forceGenerated: forceNew,
+        generatedAt: shoppingList.generated || new Date()
+      }
+    };
+    
+    res.json(response);
   } catch (error) {
     console.error('Error generating enhanced shopping list:', error);
     
@@ -149,7 +269,7 @@ export const getLatestShoppingList = async (req: Request, res: Response) => {
     }
     
     console.log(`Fetching latest shopping list for user ${userId}`);
-    const shoppingList = await ShoppingListGeminiService.getLatestShoppingList(userId);
+    const shoppingList = await ShoppingListGeminiService.getLatestShoppingList?.(userId);
     
     if (!shoppingList) {
       console.log('No shopping list found, will need to generate a new one');
@@ -159,11 +279,48 @@ export const getLatestShoppingList = async (req: Request, res: Response) => {
       });
     }
     
-    res.json(shoppingList);
+    // Add metadata for consistency
+    const response = {
+      ...shoppingList,
+      metadata: {
+        totalItems: shoppingList.items?.length || 0,
+        fromCache: true,
+        generatedAt: shoppingList.generated || new Date()
+      }
+    };
+    
+    res.json(response);
   } catch (error) {
     console.error('Error fetching latest shopping list:', error);
     res.status(500).json({ 
       message: 'Failed to fetch latest shopping list',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Check if user has recent recipes (utility endpoint)
+ */
+export const checkRecentRecipes = async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.user_id as string;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    const hasRecent = await RecipeGenerationService.hasRecentRecipes(userId);
+    
+    res.json({
+      userId,
+      hasRecentRecipes: hasRecent,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error checking recent recipes:', error);
+    res.status(500).json({ 
+      message: 'Failed to check recent recipes',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
