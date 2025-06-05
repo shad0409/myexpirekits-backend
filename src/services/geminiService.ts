@@ -33,7 +33,6 @@ export class GeminiService {
    */
   static async generateText(prompt: string): Promise<string> {
     try {
-      // Get the text-only model
       const model = genAI.getGenerativeModel({ 
         model: "gemini-1.5-pro",
         safetySettings,
@@ -61,7 +60,6 @@ export class GeminiService {
         safetySettings,
       });
       
-      // Prepare context as a string
       const contextStr = JSON.stringify(context);
       const fullPrompt = `Context: ${contextStr}\n\nPrompt: ${prompt}`;
       
@@ -75,13 +73,14 @@ export class GeminiService {
   }
 
   /**
-   * Generate an image using Gemini Image Generation
+   * Generate an image using Gemini 2.0 Flash Preview Image Generation
    */
   static async generateImage(prompt: string): Promise<string> {
     try {
-      console.log('Generating image with prompt:', prompt);
+      console.log('Generating image with Gemini...');
+      console.log('Prompt:', prompt);
       
-      // Get the image generation model
+      // Use the correct Gemini image generation model
       const model = genAI.getGenerativeModel({ 
         model: "gemini-2.0-flash-preview-image-generation",
         safetySettings,
@@ -90,31 +89,46 @@ export class GeminiService {
       const result = await model.generateContent(prompt);
       const response = result.response;
       
-      // Get the image data
-      const imageData = response.candidates?.[0]?.content?.parts?.[0];
+      console.log('Gemini response received, processing...');
       
-      if (!imageData || !imageData.inlineData) {
-        throw new Error('No image data received from Gemini');
+      // Check for image data in the response
+      const candidates = response.candidates;
+      if (candidates && candidates.length > 0) {
+        const parts = candidates[0].content?.parts;
+        if (parts) {
+          for (const part of parts) {
+            if (part.inlineData && part.inlineData.data) {
+              console.log('Found image data in response');
+              
+              // Save the image locally
+              const imageBuffer = Buffer.from(part.inlineData.data, 'base64');
+              const fileName = `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${this.getImageExtension(part.inlineData.mimeType)}`;
+              const uploadsDir = path.join(process.cwd(), 'uploads', 'recipes');
+              
+              // Ensure uploads directory exists
+              if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+              }
+              
+              const filePath = path.join(uploadsDir, fileName);
+              fs.writeFileSync(filePath, imageBuffer);
+              
+              const imageUrl = `/uploads/recipes/${fileName}`;
+              console.log('Image saved successfully:', imageUrl);
+              
+              return imageUrl;
+            }
+          }
+        }
       }
       
-      // Save the image locally
-      const imageBuffer = Buffer.from(imageData.inlineData.data, 'base64');
-      const fileName = `recipe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${this.getImageExtension(imageData.inlineData.mimeType)}`;
-      const uploadsDir = path.join(process.cwd(), 'uploads', 'recipes');
+      // Log response for debugging
+      console.log('No image found in response');
+      console.log('Response text:', response.text());
+      console.log('Full response structure:', JSON.stringify(response, null, 2));
       
-      // Ensure uploads directory exists
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
+      throw new Error('No image data received from Gemini');
       
-      const filePath = path.join(uploadsDir, fileName);
-      fs.writeFileSync(filePath, imageBuffer);
-      
-      // Return the URL path that can be accessed via your server
-      const imageUrl = `/uploads/recipes/${fileName}`;
-      console.log('Image saved successfully:', imageUrl);
-      
-      return imageUrl;
     } catch (error) {
       console.error('Error generating image with Gemini:', error);
       throw error;
@@ -125,27 +139,13 @@ export class GeminiService {
    * Generate recipe image with specific styling prompt
    */
   static async generateRecipeImage(recipeName: string, description: string, ingredients: string[]): Promise<string> {
-    // Create a detailed prompt for food photography
-    const prompt = `Create a high-quality, appetizing food photography image of "${recipeName}". 
+    const prompt = `Generate a high-quality, appetizing food photography image of "${recipeName}". 
     
     Description: ${description}
     
-    Key ingredients visible: ${ingredients.slice(0, 5).join(', ')}
+    Key ingredients: ${ingredients.slice(0, 5).join(', ')}
     
-    Style requirements:
-    - Professional food photography
-    - Well-lit, natural lighting
-    - Clean, appetizing presentation
-    - Restaurant-quality plating
-    - Vibrant colors
-    - Shallow depth of field
-    - Top-down or 45-degree angle view
-    - Clean white or wooden background
-    - No text or watermarks
-    - High resolution, sharp focus
-    - Make it look delicious and Instagram-worthy
-    
-    The image should showcase the finished dish in an appealing way that would make someone want to cook and eat it.`;
+    Style: Professional food photography, well-lit, natural lighting, clean appetizing presentation, restaurant-quality plating, vibrant colors, clean white or wooden background, no text or watermarks, make it look delicious and Instagram-worthy.`;
     
     return await this.generateImage(prompt);
   }
@@ -171,14 +171,11 @@ export class GeminiService {
   static extractJsonFromResponse(response: string): string {
     let jsonStr = response;
     
-    // Check if the response is wrapped in a code block
     if (response.includes('```')) {
-      // Find code block markers
       const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
       const match = response.match(codeBlockRegex);
       
       if (match && match[1]) {
-        // Extract just the JSON part
         jsonStr = match[1].trim();
       }
     }
