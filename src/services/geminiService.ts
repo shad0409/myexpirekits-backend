@@ -125,35 +125,29 @@ export class GeminiService {
    * Generate recipe image with specific styling prompt
    */
   static async generateRecipeImage(recipeName: string, description: string, ingredients: string[]): Promise<string> {
-    try {
-      // Create a detailed prompt for food photography
-      const prompt = `Create a high-quality, appetizing food photography image of "${recipeName}". 
-      
-      Description: ${description}
-      
-      Key ingredients visible: ${ingredients.slice(0, 5).join(', ')}
-      
-      Style requirements:
-      - Professional food photography
-      - Well-lit, natural lighting
-      - Clean, appetizing presentation
-      - Restaurant-quality plating
-      - Vibrant colors
-      - Shallow depth of field
-      - Top-down or 45-degree angle view
-      - Clean white or wooden background
-      - No text or watermarks
-      - High resolution, sharp focus
-      - Make it look delicious and Instagram-worthy
-      
-      The image should showcase the finished dish in an appealing way that would make someone want to cook and eat it.`;
-      
-      return await this.generateImage(prompt);
-    } catch (error) {
-      console.error('Error generating recipe image:', error);
-      // Return a placeholder or null if image generation fails
-      return '';
-    }
+    // Create a detailed prompt for food photography
+    const prompt = `Create a high-quality, appetizing food photography image of "${recipeName}". 
+    
+    Description: ${description}
+    
+    Key ingredients visible: ${ingredients.slice(0, 5).join(', ')}
+    
+    Style requirements:
+    - Professional food photography
+    - Well-lit, natural lighting
+    - Clean, appetizing presentation
+    - Restaurant-quality plating
+    - Vibrant colors
+    - Shallow depth of field
+    - Top-down or 45-degree angle view
+    - Clean white or wooden background
+    - No text or watermarks
+    - High resolution, sharp focus
+    - Make it look delicious and Instagram-worthy
+    
+    The image should showcase the finished dish in an appealing way that would make someone want to cook and eat it.`;
+    
+    return await this.generateImage(prompt);
   }
 
   /**

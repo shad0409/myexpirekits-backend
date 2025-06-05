@@ -24,25 +24,20 @@ export const generateRecipes = async (req: Request, res: Response) => {
     const endTime = Date.now();
     const generationTime = endTime - startTime;
     
-    console.log(`Successfully retrieved/generated ${recipes.recipes?.length || 0} recipes with AI images in ${generationTime}ms`);
+    console.log(`Successfully retrieved/generated ${recipes.recipes?.length || 0} recipes in ${generationTime}ms`);
     
-    // Count recipes with successfully generated images vs fallback images
-    const recipesWithAIImages = recipes.recipes?.filter(r => 
-      r.image_url && !r.image_url.includes('unsplash.com')
-    ).length || 0;
+    // Count recipes with successfully generated images
+    const recipesWithImages = recipes.recipes?.filter(r => r.image_url !== null).length || 0;
+    const recipesWithoutImages = recipes.recipes?.filter(r => r.image_url === null).length || 0;
     
-    const recipesWithFallbackImages = recipes.recipes?.filter(r => 
-      r.image_url && r.image_url.includes('unsplash.com')
-    ).length || 0;
-    
-    // Add metadata about image generation
+    // Add metadata about generation
     const response = {
       ...recipes,
       metadata: {
         generationTime,
         totalRecipes: recipes.recipes?.length || 0,
-        aiGeneratedImages: recipesWithAIImages,
-        fallbackImages: recipesWithFallbackImages,
+        recipesWithImages,
+        recipesWithoutImages,
         wasFromCache: !forceNew && await RecipeGenerationService.hasRecentRecipes(userId),
         generatedAt: recipes.generated
       }
@@ -121,16 +116,11 @@ export const forceGenerateRecipes = async (req: Request, res: Response) => {
     const endTime = Date.now();
     const generationTime = endTime - startTime;
     
-    console.log(`Successfully generated ${recipes.recipes?.length || 0} new recipes with AI images in ${generationTime}ms`);
+    console.log(`Successfully generated ${recipes.recipes?.length || 0} new recipes in ${generationTime}ms`);
     
     // Count image generation success
-    const recipesWithAIImages = recipes.recipes?.filter(r => 
-      r.image_url && !r.image_url.includes('unsplash.com')
-    ).length || 0;
-    
-    const recipesWithFallbackImages = recipes.recipes?.filter(r => 
-      r.image_url && r.image_url.includes('unsplash.com')
-    ).length || 0;
+    const recipesWithImages = recipes.recipes?.filter(r => r.image_url !== null).length || 0;
+    const recipesWithoutImages = recipes.recipes?.filter(r => r.image_url === null).length || 0;
     
     // Add generation metadata
     const response = {
@@ -138,8 +128,8 @@ export const forceGenerateRecipes = async (req: Request, res: Response) => {
       metadata: {
         generationTime,
         totalRecipes: recipes.recipes?.length || 0,
-        aiGeneratedImages: recipesWithAIImages,
-        fallbackImages: recipesWithFallbackImages,
+        recipesWithImages,
+        recipesWithoutImages,
         forceGenerated: true,
         generatedAt: recipes.generated
       }
@@ -168,7 +158,7 @@ export const regenerateRecipeImage = async (req: Request, res: Response) => {
       });
     }
     
-    console.log(`Regenerating AI image for recipe: ${recipeName}`);
+    console.log(`Regenerating image for recipe: ${recipeName}`);
     
     const startTime = Date.now();
     
@@ -181,14 +171,13 @@ export const regenerateRecipeImage = async (req: Request, res: Response) => {
     const endTime = Date.now();
     const generationTime = endTime - startTime;
     
-    console.log(`AI image regenerated successfully for "${recipeName}" in ${generationTime}ms`);
+    console.log(`Image regenerated successfully for "${recipeName}" in ${generationTime}ms`);
     
     res.json({
       success: true,
       imageUrl,
       recipeName,
       generationTime,
-      isAIGenerated: !imageUrl.includes('unsplash.com'),
       timestamp: new Date().toISOString()
     });
   } catch (error) {
