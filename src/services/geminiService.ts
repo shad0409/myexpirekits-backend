@@ -77,35 +77,51 @@ export class GeminiService {
    */
   static async generateImage(prompt: string): Promise<string> {
     try {
-      console.log('Generating image with Gemini...');
+      console.log('Generating image with Gemini REST API...');
       console.log('Prompt:', prompt);
       
-      // Use the correct Gemini image generation model
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash-preview-image-generation",
-        safetySettings,
-      });
+      // Use REST API directly since SDK doesn't support responseModalities
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`;
       
-      // The model requires TEXT + IMAGE response modalities, so structure the request properly
-      const result = await model.generateContent({
+      const requestBody = {
         contents: [
           {
             role: "user",
             parts: [
               {
-                text: `Generate an image with this prompt: ${prompt}`
+                text: `Please generate an image of: ${prompt}. Also provide a brief description of the image you created.`
               }
             ]
           }
-        ]
+        ],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 4096
+        }
+      };
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
       });
       
-      const response = result.response;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+      const data = await response.json();
       
       console.log('Gemini response received, processing...');
       
       // Check for image data in the response
-      const candidates = response.candidates;
+      const candidates = data.candidates;
       if (candidates && candidates.length > 0) {
         const parts = candidates[0].content?.parts;
         if (parts) {
@@ -137,8 +153,7 @@ export class GeminiService {
       
       // Log response for debugging
       console.log('No image found in response');
-      console.log('Response text:', response.text());
-      console.log('Full response structure:', JSON.stringify(response, null, 2));
+      console.log('Response data:', JSON.stringify(data, null, 2));
       
       throw new Error('No image data received from Gemini');
       
