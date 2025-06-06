@@ -5,7 +5,7 @@ import { authenticateAdmin } from '../middleware/adminAuth';
 const router = Router();
 
 // Protected by admin authentication
-router.use((req, res, next) => authenticateAdmin(req, res, next));
+router.use(authenticateAdmin);
 
 // GET all items
 router.get('/items', async (req: Request, res: Response) => {
