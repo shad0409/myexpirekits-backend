@@ -4,64 +4,34 @@ import { pool } from '../server';
 // Get all items from database
 export const getAllItems = async (req: Request, res: Response) => {
   try {
-    // Get pagination parameters from query string
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50; // Default 50 items per page
-    const offset = (page - 1) * limit;
-
-    // Validate pagination parameters
-    if (page < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Page number must be greater than 0' 
-      });
-    }
-
-    if (limit < 1 || limit > 1000) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Limit must be between 1 and 1000' 
-      });
-    }
-
-    // Get total count for pagination info
+    // Get total count first
     const [countResult]: any = await pool.execute(
       'SELECT COUNT(*) as total FROM items_database'
     );
     const totalItems = countResult[0].total;
-    const totalPages = Math.ceil(totalItems / limit);
 
-    // Execute paginated query to get items
-    // Convert to integers to ensure proper parameter types
-    const limitInt = parseInt(limit.toString());
-    const offsetInt = parseInt(offset.toString());
-    
+    // Get 50 random items (or all items if less than 50)
     const [rows]: any = await pool.execute(
       `SELECT * FROM items_database 
-       ORDER BY updated_at DESC 
-       LIMIT ? OFFSET ?`,
-      [limitInt, offsetInt]
+       ORDER BY RAND() 
+       LIMIT 50`
     );
 
-    // Return paginated response
+    // Success response
     res.json({
       success: true,
       data: rows,
-      pagination: {
-        current_page: page,
-        per_page: limit,
-        total_items: totalItems,
-        total_pages: totalPages,
-        has_next_page: page < totalPages,
-        has_prev_page: page > 1
-      }
+      total_items_in_database: totalItems,
+      displayed_items: rows.length,
+      message: `Showing ${rows.length} random items out of ${totalItems} total items`
     });
 
   } catch (error) {
     console.error('Error fetching items from database:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch items data' 
+      message: 'Failed to fetch items data',
+      error: error.message // Include actual error for debugging
     });
   }
 };
