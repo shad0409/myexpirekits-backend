@@ -4,13 +4,61 @@ import { pool } from '../server';
 // Get all items from database
 export const getAllItems = async (req: Request, res: Response) => {
   try {
-    // Execute query to get all items
-    const [rows]: any = await pool.execute('SELECT * FROM items_database ORDER BY updated_at DESC');
-    
-    res.json(rows);
+    // Get pagination parameters from query string
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50; // Default 50 items per page
+    const offset = (page - 1) * limit;
+
+    // Validate pagination parameters
+    if (page < 1) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Page number must be greater than 0' 
+      });
+    }
+
+    if (limit < 1 || limit > 1000) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Limit must be between 1 and 1000' 
+      });
+    }
+
+    // Get total count for pagination info
+    const [countResult]: any = await pool.execute(
+      'SELECT COUNT(*) as total FROM items_database'
+    );
+    const totalItems = countResult[0].total;
+    const totalPages = Math.ceil(totalItems / limit);
+
+    // Execute paginated query to get items
+    const [rows]: any = await pool.execute(
+      `SELECT * FROM items_database 
+       ORDER BY updated_at DESC 
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    // Return paginated response
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        current_page: page,
+        per_page: limit,
+        total_items: totalItems,
+        total_pages: totalPages,
+        has_next_page: page < totalPages,
+        has_prev_page: page > 1
+      }
+    });
+
   } catch (error) {
     console.error('Error fetching items from database:', error);
-    res.status(500).json({ message: 'Failed to fetch items data' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch items data' 
+    });
   }
 };
 
