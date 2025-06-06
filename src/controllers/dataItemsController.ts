@@ -32,11 +32,15 @@ export const getAllItems = async (req: Request, res: Response) => {
     const totalPages = Math.ceil(totalItems / limit);
 
     // Execute paginated query to get items
+    // Convert to integers to ensure proper parameter types
+    const limitInt = parseInt(limit.toString());
+    const offsetInt = parseInt(offset.toString());
+    
     const [rows]: any = await pool.execute(
       `SELECT * FROM items_database 
        ORDER BY updated_at DESC 
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [limitInt, offsetInt]
     );
 
     // Return paginated response
