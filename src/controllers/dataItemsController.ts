@@ -30,8 +30,7 @@ export const getAllItems = async (req: Request, res: Response) => {
     console.error('Error fetching items from database:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Failed to fetch items data',
-      error: error.message // Include actual error for debugging
+      message: 'Failed to fetch items data'
     });
   }
 };
