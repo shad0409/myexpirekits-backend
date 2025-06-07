@@ -4,13 +4,34 @@ import { pool } from '../server';
 // Get all items from database
 export const getAllItems = async (req: Request, res: Response) => {
   try {
-    // Execute query to get all items
-    const [rows]: any = await pool.execute('SELECT * FROM items_database ORDER BY updated_at DESC');
-    
-    res.json(rows);
+    // Get total count first
+    const [countResult]: any = await pool.execute(
+      'SELECT COUNT(*) as total FROM items_database'
+    );
+    const totalItems = countResult[0].total;
+
+    // Get 50 random items (or all items if less than 50)
+    const [rows]: any = await pool.execute(
+      `SELECT * FROM items_database 
+       ORDER BY RAND() 
+       LIMIT 50`
+    );
+
+    // Success response
+    res.json({
+      success: true,
+      data: rows,
+      total_items_in_database: totalItems,
+      displayed_items: rows.length,
+      message: `Showing ${rows.length} random items out of ${totalItems} total items`
+    });
+
   } catch (error) {
     console.error('Error fetching items from database:', error);
-    res.status(500).json({ message: 'Failed to fetch items data' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch items data'
+    });
   }
 };
 
