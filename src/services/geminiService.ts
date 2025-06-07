@@ -80,7 +80,7 @@ export class GeminiService {
       console.log('Generating image with Gemini REST API...');
       console.log('Prompt:', prompt);
       
-      // Use REST API directly with simpler request
+      // Use REST API directly since SDK doesn't support responseModalities
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`;
       
       const requestBody = {
@@ -89,11 +89,18 @@ export class GeminiService {
             role: "user",
             parts: [
               {
-                text: prompt
+                text: `Please generate an image of: ${prompt}. Also provide a brief description of the image you created.`
               }
             ]
           }
-        ]
+        ],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 4096
+        }
       };
       
       const response = await fetch(apiUrl, {
