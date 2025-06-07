@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool } from '../server';
+import { AdminLogService } from '../services/AdminLogService';
 
 // Get all items from database
 export const getAllItems = async (req: Request, res: Response) => {
@@ -102,11 +103,14 @@ export const getAllCategories = async (req: Request, res: Response) => {
 export const updateItem = async (req: Request, res: Response) => {
   try {
     const itemId = req.params.id;
-    const { name, category, barcode, image_url, expiryDate } = req.body;
+    const { name, category, barcode, image_url, expiryDate, admin_id } = req.body;
     
     if (!itemId) {
       return res.status(400).json({ message: 'Item ID is required' });
     }
+    
+    // Get admin_id from body or header
+    const adminId = admin_id || req.headers['x-admin-id'] as string;
     
     console.log('Updating item:', { id: itemId, data: req.body });
     
@@ -114,6 +118,18 @@ export const updateItem = async (req: Request, res: Response) => {
     if (!name || !category) {
       return res.status(400).json({ message: 'Name and category are required' });
     }
+
+    // Get original item data for logging
+    const [originalRows]: any = await pool.execute(
+      'SELECT * FROM items_database WHERE id = ?',
+      [itemId]
+    );
+
+    if (originalRows.length === 0) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    const originalItem = originalRows[0];
     
     // Include expiryDate in the SQL update
     await pool.execute(
@@ -126,6 +142,20 @@ export const updateItem = async (req: Request, res: Response) => {
        WHERE id = ?`,
       [name, category, barcode || null, expiryDate || null, itemId]
     );
+
+    // Log the admin action
+    if (adminId) {
+      const action = `updated item "${name}" (ID: ${itemId})`;
+      const details = JSON.stringify({
+        item_id: itemId,
+        changes: {
+          from: { name: originalItem.name, category: originalItem.category, barcode: originalItem.barcode, expiryDate: originalItem.expiryDate },
+          to: { name, category, barcode, expiryDate }
+        }
+      });
+      
+      await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+    }
     
     // Fetch and return the updated item for confirmation
     const [updatedRows]: any = await pool.execute(
@@ -144,6 +174,7 @@ export const updateItem = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating item:', error);
     res.status(500).json({ 
+      message: 'Failed to update item'
     });
   }
 };
@@ -152,18 +183,53 @@ export const updateItem = async (req: Request, res: Response) => {
 export const deleteItem = async (req: Request, res: Response) => {
   try {
     const itemId = req.params.id;
+    const { admin_id } = req.body;
     
     if (!itemId) {
       return res.status(400).json({ message: 'Item ID is required' });
     }
+
+    // Get admin_id from body or header
+    const adminId = admin_id || req.headers['x-admin-id'] as string;
+
+    // Get item data before deletion for logging
+    const [itemRows]: any = await pool.execute(
+      'SELECT * FROM items_database WHERE id = ?',
+      [itemId]
+    );
+
+    if (itemRows.length === 0) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    const item = itemRows[0];
     
     // Delete the item from the database
     await pool.execute(
       'DELETE FROM items_database WHERE id = ?',
       [itemId]
     );
+
+    // Log the admin action
+    if (adminId) {
+      const action = `deleted item "${item.name}" (ID: ${itemId})`;
+      const details = JSON.stringify({
+        deleted_item: {
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          barcode: item.barcode,
+          expiryDate: item.expiryDate
+        }
+      });
+      
+      await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+    }
     
-    res.json({ message: 'Item deleted successfully' });
+    res.json({ 
+      message: 'Item deleted successfully',
+      deleted_item: { id: item.id, name: item.name }
+    });
   } catch (error) {
     console.error('Error deleting item:', error);
     res.status(500).json({ message: 'Failed to delete item' });
@@ -172,26 +238,47 @@ export const deleteItem = async (req: Request, res: Response) => {
 
 // Add a new item
 export const addItem = async (req: Request, res: Response) => {
-    try {
-      const { name, category, barcode, image_url } = req.body;
-      
-      if (!name || !category) {
-        return res.status(400).json({ message: 'Name and category are required' });
-      }
-      
-      // Fix: Change image_url to image_uri in the SQL statement
-      const [result]: any = await pool.execute(
-        `INSERT INTO items_database (name, category, barcode, image_uri, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        [name, category, barcode || null, image_url || null]
-      );
-      
-      res.status(201).json({ 
-        message: 'Item added successfully',
-        id: result.insertId
-      });
-    } catch (error) {
-      console.error('Error adding item:', error);
-      res.status(500).json({ message: 'Failed to add item' });
+  try {
+    const { name, category, barcode, image_url, admin_id } = req.body;
+    
+    if (!name || !category) {
+      return res.status(400).json({ message: 'Name and category are required' });
     }
-  };
+
+    // Get admin_id from body or header
+    const adminId = admin_id || req.headers['x-admin-id'] as string;
+    
+    // Fix: Change image_url to image_uri in the SQL statement
+    const [result]: any = await pool.execute(
+      `INSERT INTO items_database (name, category, barcode, image_uri, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NOW(), NOW())`,
+      [name, category, barcode || null, image_url || null]
+    );
+
+    const newItemId = result.insertId.toString();
+
+    // Log the admin action
+    if (adminId) {
+      const action = `added new item "${name}" (ID: ${newItemId})`;
+      const details = JSON.stringify({
+        new_item: {
+          id: newItemId,
+          name,
+          category,
+          barcode: barcode || null,
+          image_uri: image_url || null
+        }
+      });
+      
+      await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+    }
+    
+    res.status(201).json({ 
+      message: 'Item added successfully',
+      id: newItemId
+    });
+  } catch (error) {
+    console.error('Error adding item:', error);
+    res.status(500).json({ message: 'Failed to add item' });
+  }
+};

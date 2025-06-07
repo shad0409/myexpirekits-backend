@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool } from '../server';
+import { AdminLogService } from '../services/AdminLogService';
 
 interface PendingItem {
   id: string;
@@ -90,7 +91,10 @@ export const pendingItemsController = {
   async approvePendingItem(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { expiryDate, barcode } = req.body;
+      const { expiryDate, barcode, admin_id } = req.body;
+      
+      // Get admin_id from body or header
+      const adminId = admin_id || req.headers['x-admin-id'] as string;
       
       // Validate that expiryDate is provided
       if (!expiryDate) {
@@ -177,6 +181,26 @@ export const pendingItemsController = {
         // Get the newly inserted ID
         const newItemId = result.insertId;
         console.log('New item ID:', newItemId);
+
+        // Log the admin action
+        if (adminId) {
+          const action = `approved pending item "${pendingItem.name}" (Pending ID: ${id}, New ID: ${newItemId})`;
+          const details = JSON.stringify({
+            pending_item_id: id,
+            new_item_id: newItemId,
+            pending_item: {
+              name: pendingItem.name,
+              category: pendingItem.category,
+              userId: pendingItem.userId
+            },
+            approved_with: {
+              expiryDate: expiryDate,
+              barcode: barcodeToUse
+            }
+          });
+          
+          await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+        }
         
         // Commit the transaction
         await connection.commit();
@@ -213,6 +237,10 @@ export const pendingItemsController = {
   async rejectPendingItem(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const { rejection_reason, admin_id } = req.body;
+      
+      // Get admin_id from body or header
+      const adminId = admin_id || req.headers['x-admin-id'] as string;
       
       // 1. Get the pending item
       const [pendingItems]: any = await pool.execute(
@@ -244,6 +272,22 @@ export const pendingItemsController = {
          WHERE id = ?`,
         ['rejected', id]
       );
+
+      // Log the admin action
+      if (adminId) {
+        const action = `rejected pending item "${pendingItem.name}" (ID: ${id})`;
+        const details = JSON.stringify({
+          pending_item_id: id,
+          rejected_item: {
+            name: pendingItem.name,
+            category: pendingItem.category,
+            userId: pendingItem.userId
+          },
+          rejection_reason: rejection_reason || 'No reason provided'
+        });
+        
+        await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+      }
       
       res.json({
         success: true,
