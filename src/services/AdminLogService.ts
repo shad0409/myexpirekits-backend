@@ -7,7 +7,7 @@ export class AdminLogService {
   static async logAction(admin_id: string, action: string, details: string, ip_address: string = 'unknown'): Promise<void> {
     try {
       await pool.execute(
-        `INSERT INTO admin_logs (admin_id, action, details, ip_address, created_at) 
+        `INSERT INTO admin_activity_logs (admin_id, action, details, ip_address, created_at) 
          VALUES (?, ?, ?, ?, NOW())`,
         [admin_id, action, details, ip_address]
       );
