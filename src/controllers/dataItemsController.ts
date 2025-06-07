@@ -185,6 +185,8 @@ export const deleteItem = async (req: Request, res: Response) => {
     const itemId = req.params.id;
     const { admin_id } = req.body;
     
+    console.log('🔥 Delete request received:', { itemId, admin_id });
+    
     if (!itemId) {
       return res.status(400).json({ message: 'Item ID is required' });
     }
@@ -199,40 +201,56 @@ export const deleteItem = async (req: Request, res: Response) => {
     );
 
     if (itemRows.length === 0) {
+      console.log('❌ Item not found:', itemId);
       return res.status(404).json({ message: 'Item not found' });
     }
 
     const item = itemRows[0];
+    console.log('📝 Found item to delete:', item.name);
     
     // Delete the item from the database
-    await pool.execute(
+    const [deleteResult]: any = await pool.execute(
       'DELETE FROM items_database WHERE id = ?',
       [itemId]
     );
 
+    console.log('✅ Delete result:', deleteResult.affectedRows);
+
+    if (deleteResult.affectedRows === 0) {
+      return res.status(404).json({ message: 'Item not found or already deleted' });
+    }
+
     // Log the admin action
     if (adminId) {
-      const action = `deleted item "${item.name}" (ID: ${itemId})`;
-      const details = JSON.stringify({
-        deleted_item: {
-          id: item.id,
-          name: item.name,
-          category: item.category,
-          barcode: item.barcode,
-          expiryDate: item.expiryDate
-        }
-      });
-      
-      await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+      try {
+        const action = `deleted item "${item.name}" (ID: ${itemId})`;
+        const details = JSON.stringify({
+          deleted_item: {
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            barcode: item.barcode,
+            expiryDate: item.expiryDate
+          }
+        });
+        
+        await AdminLogService.logAction(adminId, action, details, AdminLogService.getClientIP(req));
+      } catch (logError) {
+        console.error('Logging error:', logError);
+      }
     }
     
     res.json({ 
+      success: true,
       message: 'Item deleted successfully',
       deleted_item: { id: item.id, name: item.name }
     });
   } catch (error) {
-    console.error('Error deleting item:', error);
-    res.status(500).json({ message: 'Failed to delete item' });
+    console.error('❌ Error deleting item:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete item' 
+    });
   }
 };
 
