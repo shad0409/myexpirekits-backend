@@ -15,6 +15,7 @@ import mlRoutes from './routes/mlRoutes'
 import adminRoutes from './routes/adminRoutes'
 import dataItemsRoutes from './routes/dataItemsRoutes';
 import geminiRoutes from './routes/geminiRoutes';
+import adminLogsRoutes from './routes/adminLogsRoutes';
 
 import { MLService } from './services/mlService';
 
@@ -162,6 +163,7 @@ app.use('/api/shopping-lists', shoppingListRoutes);
 app.use('/api/ml', mlRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/admin/data', dataItemsRoutes);
+app.use('/api/admin-logs', adminLogsRoutes);
 app.use('/api/gemini', geminiRoutes);
 
 app.use('/uploads', express.static('uploads'));
