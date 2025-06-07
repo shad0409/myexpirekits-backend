@@ -1,18 +1,21 @@
 import { pool } from '../server';
 import { KNNExpirationPredictor } from './mlModels/knnExpirationPredictor';
 import { ConsumptionPredictor } from './mlModels/consumptionPredictor';
+import { RandomForestConsumptionPredictor } from './mlModels/randomForestConsumptionPredictor';
 import { DataTransformer } from './mlModels/dataTransformer';
 
 export class MLService {
   private static instance: MLService;
   private expirationPredictor: KNNExpirationPredictor;
   private consumptionPredictor: ConsumptionPredictor;
+  private randomForestPredictor: RandomForestConsumptionPredictor;
   private isModelsTrained: boolean = false;
   private lastTrainingTime: Date | null = null;
   
   private constructor() {
     this.expirationPredictor = new KNNExpirationPredictor(5); // k=5 neighbors
     this.consumptionPredictor = new ConsumptionPredictor();
+    this.randomForestPredictor = new RandomForestConsumptionPredictor();
   }
   
   /**
@@ -55,10 +58,13 @@ export class MLService {
       // Train consumption predictor
       this.consumptionPredictor.train(consumptionPatterns, itemEvents);
       
+      // Train Random Forest predictor
+      await this.randomForestPredictor.train(pool);
+      
       this.isModelsTrained = true;
       this.lastTrainingTime = new Date();
       
-      console.log('ML models trained successfully.');
+      console.log('All ML models (KNN + ConsumptionPredictor + Random Forest) trained successfully.');
     } catch (error) {
       console.error('Error training ML models:', error);
       throw error;
@@ -175,6 +181,43 @@ export class MLService {
           values: [0, 0, 0, 0, 0, 0, 0]
         },
         error: 'Error generating prediction'
+      };
+    }
+  }
+  
+  /**
+   * NEW: Get Random Forest predictions for active inventory
+   */
+  public async getRandomForestPredictions(userId: string): Promise<any> {
+    try {
+      if (!this.isModelsTrained) {
+        await this.trainModels();
+      }
+      
+      const predictions = await this.randomForestPredictor.predictForActiveInventory(userId, pool);
+      
+      return {
+        timestamp: new Date(),
+        predictions,
+        summary: {
+          total_items: predictions.length,
+          items_with_predictions: predictions.filter(p => p.days_until_consumption !== null).length,
+          will_consume_within_7_days: predictions.filter(p => p.will_consume_within_7_days).length,
+          items_without_data: predictions.filter(p => p.days_until_consumption === null).length
+        }
+      };
+    } catch (error) {
+      console.error('Error getting Random Forest predictions:', error);
+      return {
+        timestamp: new Date(),
+        predictions: [],
+        summary: {
+          total_items: 0,
+          items_with_predictions: 0,
+          will_consume_within_7_days: 0,
+          items_without_data: 0
+        },
+        error: 'Failed to generate Random Forest predictions'
       };
     }
   }
@@ -337,7 +380,9 @@ export class MLService {
       console.error('Error analyzing inventory:', error);
       throw error;
     }
-  }  /**
+  }
+
+  /**
    * Calculate usage statistics from events
    */
   private calculateUsageStats(events: any[], item: any): any {
@@ -393,7 +438,9 @@ export class MLService {
         ? new Date(lastConsumed.getTime() + typicalFrequency * 24 * 60 * 60 * 1000)
         : null
     };
-  }  /**
+  }
+
+  /**
    * Predict item outcome (consume, expire, discard)
    */
   public async predictItemOutcome(userId: string, itemId: string): Promise<any> {
@@ -606,11 +653,14 @@ export class MLService {
       // Get category predictions
       const categoryPredictions = await this.predictConsumptionByCategory(userId);
       
+      // Get Random Forest predictions
+      const randomForestPredictions = await this.getRandomForestPredictions(userId);
+      
       // Get all items with predicted outcomes
       const [itemRows]: any = await pool.execute(
         `SELECT * FROM items 
          WHERE userId = ? AND status = 'active'
-         ORDER BY expiry_date`,
+         ORDER BY expiryDate`,
         [userId]
       );
       
@@ -651,6 +701,7 @@ export class MLService {
         timestamp: new Date(),
         consumption_trend: consumptionTrend,
         category_predictions: categoryPredictions,
+        random_forest_predictions: randomForestPredictions,
         item_outcomes: groupedItems,
         analytics: {
           active_items: itemRows.length,

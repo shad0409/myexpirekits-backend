@@ -3,6 +3,30 @@ import { MLService } from '../services/mlService';
 import { DataTransformer } from '../services/mlModels/dataTransformer';
 import { pool } from '../server';
 
+interface ModelComparison {
+  item_id: string;
+  item_name: string;
+  category: string;
+  expiry_date: string | null;
+  random_forest: {
+    days_until_consumption: number | null;
+    will_consume_within_7_days: boolean;
+    confidence: number;
+    has_historical_data: boolean;
+  };
+  knn: {
+    predicted_outcome: string;
+    confidence: number;
+    risk_score: number;
+    risk_level: string;
+  } | null;
+  agreement: {
+    both_have_predictions: boolean;
+    models_agree: boolean;
+    confidence_difference: number | null;
+  };
+}
+
 /**
  * Train ML models with latest data
  */
@@ -204,5 +228,155 @@ export const analyzeInventory = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error analyzing inventory:', error);
     res.status(500).json({ message: 'Failed to analyze inventory' });
+  }
+};
+
+// Add these new controller methods to your existing mlController.ts
+
+/**
+ * Get Random Forest predictions for active inventory
+ */
+export const getRandomForestPredictions = async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.user_id as string;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    console.log(`Getting Random Forest predictions for user ${userId}`);
+    const mlService = MLService.getInstance();
+    const predictions = await mlService.getRandomForestPredictions(userId);
+    
+    res.json(predictions);
+  } catch (error) {
+    console.error('Error getting Random Forest predictions:', error);
+    res.status(500).json({ 
+      message: 'Failed to get Random Forest predictions',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Get enhanced comprehensive analysis with all ML models
+ */
+export const getEnhancedComprehensiveAnalysis = async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.user_id as string;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    console.log(`Getting enhanced comprehensive analysis for user ${userId}`);
+    const mlService = MLService.getInstance();
+    const analysis = await mlService.getComprehensiveAnalysis(userId);
+    
+    res.json({
+      ...analysis,
+      ml_models_used: [
+        'Random Forest (consumption timing)',
+        'KNN (item outcome prediction)', 
+        'ConsumptionPredictor (category patterns)',
+        'Statistical (trend analysis)'
+      ],
+      predictions_explanation: {
+        random_forest: 'Predicts days until consumption and likelihood of consumption within 7 days',
+        knn: 'Predicts whether items will be consumed or expire based on historical patterns',
+        statistical: 'Provides consumption trend forecasts using moving averages',
+        consumption_predictor: 'Analyzes consumption patterns by category'
+      }
+    });
+  } catch (error) {
+    console.error('Error getting enhanced comprehensive analysis:', error);
+    res.status(500).json({ 
+      message: 'Failed to get enhanced comprehensive analysis',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+/**
+ * Compare predictions between different ML models for same items
+ */
+export const compareMLModels = async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.user_id as string;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+    
+    console.log(`Comparing ML models for user ${userId}`);
+    const mlService = MLService.getInstance();
+    
+    // Get predictions from both models
+    const [rfPredictions, inventoryAnalysis] = await Promise.all([
+      mlService.getRandomForestPredictions(userId),
+      mlService.analyzeInventory(userId)
+    ]);
+    
+    // Compare predictions for same items
+    const comparisons: ModelComparison[] = rfPredictions.predictions.map((rfPred: any) => {
+      const knnItem = inventoryAnalysis.items.find((item: any) => item.id === rfPred.item_id);
+      
+      return {
+        item_id: rfPred.item_id,
+        item_name: rfPred.item_name,
+        category: rfPred.category,
+        expiry_date: rfPred.expiry_date,
+        
+        // Random Forest predictions
+        random_forest: {
+          days_until_consumption: rfPred.days_until_consumption,
+          will_consume_within_7_days: rfPred.will_consume_within_7_days,
+          confidence: rfPred.confidence,
+          has_historical_data: rfPred.days_until_consumption !== null
+        },
+        
+        // KNN predictions
+        knn: knnItem ? {
+          predicted_outcome: knnItem.prediction.outcome,
+          confidence: knnItem.prediction.confidence,
+          risk_score: knnItem.risk_score,
+          risk_level: knnItem.risk_level
+        } : null,
+        
+        // Agreement analysis
+        agreement: {
+          both_have_predictions: rfPred.days_until_consumption !== null && knnItem !== null,
+          models_agree: rfPred.will_consume_within_7_days === (knnItem?.prediction.outcome === 'consume'),
+          confidence_difference: knnItem ? Math.abs(rfPred.confidence - knnItem.prediction.confidence) : null
+        }
+      };
+    });
+    
+    // Calculate summary statistics with proper typing
+    const totalItems = comparisons.length;
+    const itemsWithBothPredictions = comparisons.filter((c: ModelComparison) => c.agreement.both_have_predictions).length;
+    const agreementCount = comparisons.filter((c: ModelComparison) => c.agreement.models_agree).length;
+    
+    res.json({
+      timestamp: new Date(),
+      total_items: totalItems,
+      items_with_both_predictions: itemsWithBothPredictions,
+      model_agreement_rate: itemsWithBothPredictions > 0 ? agreementCount / itemsWithBothPredictions : 0,
+      comparisons,
+      summary: {
+        random_forest_predictions: rfPredictions.summary,
+        knn_predictions: {
+          total_items: inventoryAnalysis.summary.total_items,
+          high_risk_items: inventoryAnalysis.summary.high_risk_items,
+          waste_risk_level: inventoryAnalysis.summary.waste_risk_level
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error comparing ML models:', error);
+    res.status(500).json({ 
+      message: 'Failed to compare ML models',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };

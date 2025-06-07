@@ -7,7 +7,10 @@ import {
   getCategoryTimeSeries,
   getComprehensiveAnalysis,
   getWeeklyPatterns,
-  analyzeInventory
+  analyzeInventory,
+  getRandomForestPredictions,
+  getEnhancedComprehensiveAnalysis,
+  compareMLModels
 } from '../controllers/mlController';
 
 const router = Router();
@@ -50,6 +53,21 @@ router.get('/patterns/weekly', async (req: Request, res: Response) => {
 // GET inventory analysis
 router.get('/inventory/analyze', async (req: Request, res: Response) => {
   await analyzeInventory(req, res);
+});
+
+// GET Random Forest predictions for active inventory
+router.get('/random-forest/predictions', async (req: Request, res: Response) => {
+  await getRandomForestPredictions(req, res);
+});
+
+// GET enhanced comprehensive analysis with all models
+router.get('/analysis/enhanced', async (req: Request, res: Response) => {
+  await getEnhancedComprehensiveAnalysis(req, res);
+});
+
+// GET model comparison analysis
+router.get('/models/compare', async (req: Request, res: Response) => {
+  await compareMLModels(req, res);
 });
 
 export default router;
