@@ -141,6 +141,25 @@ app.get('/health', async (req, res) => {
   }
 });
 
+app.get('/debug/uploads', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  
+  try {
+    const uploadsPath = path.join(__dirname, 'uploads');
+    const files = fs.readdirSync(uploadsPath);
+    res.json({ 
+      uploadsPath,
+      filesFound: files,
+      totalFiles: files.length 
+    });
+  } catch (error) {
+    res.json({ 
+      uploadsExists: false 
+    });
+  }
+});
+
 // Test endpoint (keep your existing one)
 app.get('/api/test', (req, res) => {
   console.log('Test endpoint hit:', {
