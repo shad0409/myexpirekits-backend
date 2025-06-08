@@ -96,7 +96,8 @@ app.use(cors({
     'Accept',
     'Origin',
     'Cache-Control',
-    'X-Requested-With'
+    'X-Requested-With',
+    'x-admin-id'
   ],
   exposedHeaders: ['Content-Length', 'X-Requested-With'],
   optionsSuccessStatus: 200, // For legacy browser support
