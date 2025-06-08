@@ -25,6 +25,13 @@ router.post('/verify-token', async (req: Request, res: Response) => {
   await verifyAdminToken(req, res);
 });
 
+router.use((req, res, next) => {
+  console.log(`Admin route accessed: ${req.method} ${req.path}`);
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+  next();
+});
+
 // Apply the authentication middleware correctly
 router.use(authenticateAdmin);
 
