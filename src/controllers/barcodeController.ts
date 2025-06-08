@@ -8,6 +8,7 @@ interface OpenFoodFactsRow extends RowDataPacket {
   name: string;
   category: string;
   image_uri: string;
+  expiryDate: string | null; // Added expiryDate field
   created_at: Date;
   updated_at: Date;
 }
@@ -36,7 +37,7 @@ export const barcodeController = {
         console.error('[DEBUG] Error checking table structure:', error);
       }
       
-      // Adjusted query based on your screenshot - using the column names shown
+      // Query to get product information including expiry date
       const [rows] = await pool.query<OpenFoodFactsRow[]>(
         'SELECT * FROM myexpirekits.items_database WHERE barcode = ? LIMIT 1',
         [barcode]
@@ -70,11 +71,30 @@ export const barcodeController = {
         }
       }
       
+      // Format expiry date if it exists
+      let formattedExpiryDate = null;
+      if (product.expiryDate) {
+        try {
+          // Ensure the date is in YYYY-MM-DD format
+          const expiryDate = new Date(product.expiryDate);
+          if (!isNaN(expiryDate.getTime())) {
+            formattedExpiryDate = expiryDate.toISOString().split('T')[0];
+          }
+        } catch (dateError) {
+          console.error('[DEBUG] Error formatting expiry date:', dateError);
+          // If date formatting fails, pass the original value
+          formattedExpiryDate = product.expiryDate;
+        }
+      }
+      
+      console.log('[DEBUG] Formatted expiry date:', formattedExpiryDate);
+      
       // Transform to match the expected frontend format
       const result = {
         product_name: product.name,
-        product_type: formattedCategory, // Using the formatted category
-        image_front_url: product.image_uri
+        product_type: formattedCategory,
+        image_front_url: product.image_uri,
+        expiryDate: formattedExpiryDate // Added expiry date to response
       };
       
       console.log('[DEBUG] Sending response:', JSON.stringify(result));
