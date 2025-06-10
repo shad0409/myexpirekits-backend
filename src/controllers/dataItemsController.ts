@@ -11,11 +11,12 @@ export const getAllItems = async (req: Request, res: Response) => {
     );
     const totalItems = countResult[0].total;
 
-    // Get 50 random items (or all items if less than 50)
+    // Get 50 most recent items (by updated_at time) - explicitly select image_uri
     const [rows]: any = await pool.execute(
-      `SELECT * FROM items_database 
-       ORDER BY RAND() 
-       LIMIT 50`
+      `SELECT id, name, category, barcode, image_uri, expiryDate, created_at, updated_at 
+       FROM items_database 
+       ORDER BY updated_at DESC, created_at DESC 
+       LIMIT 100`
     );
 
     // Success response
@@ -24,7 +25,7 @@ export const getAllItems = async (req: Request, res: Response) => {
       data: rows,
       total_items_in_database: totalItems,
       displayed_items: rows.length,
-      message: `Showing ${rows.length} random items out of ${totalItems} total items`
+      message: `Showing ${rows.length} most recent items out of ${totalItems} total items`
     });
 
   } catch (error) {
