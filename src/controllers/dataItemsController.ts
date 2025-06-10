@@ -16,7 +16,7 @@ export const getAllItems = async (req: Request, res: Response) => {
       `SELECT id, name, category, barcode, image_uri, expiryDate, created_at, updated_at 
        FROM items_database 
        ORDER BY updated_at DESC, created_at DESC 
-       LIMIT 100`
+       LIMIT 60`
     );
 
     // Success response
